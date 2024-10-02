@@ -1,0 +1,46 @@
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+from sklearn.neighbors import NearestNeighbors
+
+# Load data from uploaded files
+books = pd.read_csv('/content/BX-Books.csv', sep=';', on_bad_lines='skip', encoding="latin-1", low_memory=False)
+users = pd.read_csv('/content/BX-Users.csv', sep=';', on_bad_lines='skip', encoding="latin-1", low_memory=False)
+ratings = pd.read_csv('/content/BX-Book-Ratings.csv', sep=';', on_bad_lines='skip', encoding="latin-1", low_memory=False)
+
+# Cleaning and filtering the data
+# Only keep users with at least 200 ratings and books with at least 100 ratings
+user_counts = ratings['User-ID'].value_counts()
+ratings = ratings[ratings['User-ID'].isin(user_counts[user_counts >= 200].index)]
+
+book_counts = ratings['ISBN'].value_counts()
+ratings = ratings[ratings['ISBN'].isin(book_counts[book_counts >= 100].index)]
+
+# Create book-user matrix
+ratings_matrix = ratings.pivot(index='User-ID', columns='ISBN', values='Book-Rating').fillna(0)
+
+# Train the K-Nearest Neighbors model
+model = NearestNeighbors(metric='cosine', algorithm='brute')
+model.fit(ratings_matrix.T)
+
+# Function to get book recommendations
+def get_recommends(book_title):
+    book_list = books[books['Book-Title'].str.contains(book_title, case=False, na=False)]
+    if book_list.empty:
+        return [book_title, []]
+
+    book_title_full = book_list.iloc[0]['Book-Title']
+    book_id = book_list.iloc[0]['ISBN']
+
+    distances, indices = model.kneighbors(ratings_matrix.T.loc[book_id].values.reshape(1, -1), n_neighbors=6)
+
+    similar_books = []
+    for i in range(1, len(distances.flatten())):
+        similar_book_id = ratings_matrix.T.index[indices.flatten()[i]]
+        similar_book_title = books[books['ISBN'] == similar_book_id]['Book-Title'].values[0]
+        similar_books.append([similar_book_title, distances.flatten()[i]])
+
+    return [book_title_full, similar_books]
+
+# Test the function
+print(get_recommends("The Queen of the Damned (Vampire Chronicles (Paperback))"))
